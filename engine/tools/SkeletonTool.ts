@@ -196,8 +196,10 @@ export class SkeletonTool {
 
                 // Root sphere (keep as requested)
                 if (this.options.drawJoints) {
-                    const radius = 0.3 * this.options.rootScale; // World unit size approx
-                    this.drawWireSphere(debug, pos, radius, this.options.rootColor);
+                    // [UPDATED] Size reduced to 1/10th as requested (0.3 -> 0.03)
+                    const radius = 0.03 * this.options.rootScale; 
+                    // [UPDATED] Pass axes to rotate sphere
+                    this.drawWireSphere(debug, pos, radius, this.options.rootColor, rx, ry, rz);
                 }
             } else {
                 // Standard joint dot
@@ -246,46 +248,53 @@ export class SkeletonTool {
         }
     }
 
-    private drawWireSphere(debug: any, center: Vec3, radius: number, color: {r: number, g: number, b: number}) {
+    private drawWireSphere(
+        debug: any, 
+        center: Vec3, 
+        radius: number, 
+        color: {r: number, g: number, b: number},
+        xAxis: Vec3 = {x:1,y:0,z:0},
+        yAxis: Vec3 = {x:0,y:1,z:0},
+        zAxis: Vec3 = {x:0,y:0,z:1}
+    ) {
         const segments = 12;
         
-        // Draw 3 orthogonal circles (XY, YZ, XZ)
+        // Helper to compute world point from local rotation
+        const getPoint = (u: Vec3, v: Vec3, theta: number) => {
+            const cos = Math.cos(theta);
+            const sin = Math.sin(theta);
+            return {
+                x: center.x + (u.x * cos + v.x * sin) * radius,
+                y: center.y + (u.y * cos + v.y * sin) * radius,
+                z: center.z + (u.z * cos + v.z * sin) * radius
+            };
+        };
+
+        // Draw 3 orthogonal circles (XY, YZ, XZ) in local space
         
-        // XY Circle
-        let prev = { x: center.x + radius, y: center.y, z: center.z };
+        // XY Circle (rotates around Z axis)
+        let prev = getPoint(xAxis, yAxis, 0);
         for(let i = 1; i <= segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
-            const next = {
-                x: center.x + Math.cos(theta) * radius,
-                y: center.y + Math.sin(theta) * radius,
-                z: center.z
-            };
+            const next = getPoint(xAxis, yAxis, theta);
             debug.drawLine(prev, next, color);
             prev = next;
         }
 
-        // YZ Circle
-        prev = { x: center.x, y: center.y + radius, z: center.z };
+        // YZ Circle (rotates around X axis)
+        prev = getPoint(yAxis, zAxis, 0);
         for(let i = 1; i <= segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
-            const next = {
-                x: center.x,
-                y: center.y + Math.cos(theta) * radius,
-                z: center.z + Math.sin(theta) * radius
-            };
+            const next = getPoint(yAxis, zAxis, theta);
             debug.drawLine(prev, next, color);
             prev = next;
         }
 
-        // XZ Circle
-        prev = { x: center.x + radius, y: center.y, z: center.z };
+        // XZ Circle (rotates around Y axis)
+        prev = getPoint(xAxis, zAxis, 0);
         for(let i = 1; i <= segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
-            const next = {
-                x: center.x + Math.cos(theta) * radius,
-                y: center.y,
-                z: center.z + Math.sin(theta) * radius
-            };
+            const next = getPoint(xAxis, zAxis, theta);
             debug.drawLine(prev, next, color);
             prev = next;
         }
