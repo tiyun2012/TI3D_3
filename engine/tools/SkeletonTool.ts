@@ -72,7 +72,7 @@ export class SkeletonTool {
 
         // 1. Draw Standalone Skeletons (Rig-only entities)
         engineInstance.skeletonEntityAssetMap.forEach((assetId, entityId) => {
-            this.drawSkeleton(assetId, entityId, debug);
+            this.drawSkeleton(assetId, entityId, debug, true);
         });
 
         // 2. Draw Skeletal Meshes
@@ -86,13 +86,13 @@ export class SkeletonTool {
                 const meshIntId = engineInstance.ecs.store.meshType[idx];
                 const assetId = assetManager.meshIntToUuid.get(meshIntId);
                 if (assetId) {
-                    this.drawSkeleton(assetId, entityId, debug);
+                    this.drawSkeleton(assetId, entityId, debug, false);
                 }
             }
         });
     }
 
-    private drawSkeleton(assetId: string, entityId: string, debug: DebugRenderer) {
+    private drawSkeleton(assetId: string, entityId: string, debug: DebugRenderer, isStandalone: boolean) {
         const asset = assetManager.getAsset(assetId) as (SkeletonAsset | SkeletalMeshAsset | undefined);
         if (!asset) return;
 
@@ -116,32 +116,92 @@ export class SkeletonTool {
             z: worldMat[2] * x + worldMat[6] * y + worldMat[10] * z
         });
 
+        if (isStandalone) {
+            const origin = { x: worldMat[12], y: worldMat[13], z: worldMat[14] };
+
+            // entity basis (columns of worldMat)
+            const ex = { x: worldMat[0], y: worldMat[1], z: worldMat[2] };
+            const ey = { x: worldMat[4], y: worldMat[5], z: worldMat[6] };
+            const ez = { x: worldMat[8], y: worldMat[9], z: worldMat[10] };
+
+            this.drawAxis(debug, origin, ex, ey, ez, 0.6);
+        }
+
         const bones = skeleton.bones;
+        // 1. Get the list of live bone entities for this mesh/skeleton
+        const liveBoneIds = engineInstance.skeletonMap.get(entityId);
 
         for (let i = 0; i < bones.length; i++) {
             const bone = bones[i];
             const p = (bone as any).parentIndex;
             const isRoot = p === -1 || p === undefined || p === null;
 
-            // Extract world position from bind pose (local relative to model root) transformed by Entity World Matrix
-            const bx = bone.bindPose[12];
-            const by = bone.bindPose[13];
-            const bz = bone.bindPose[14];
-            const pos = transform(bx, by, bz);
+            let pos = { x: 0, y: 0, z: 0 };
+            let rx = { x: 1, y: 0, z: 0 };
+            let ry = { x: 0, y: 1, z: 0 };
+            let rz = { x: 0, y: 0, z: 1 };
+            
+            // Try to get the LIVE position from the Entity first
+            let usedLiveEntity = false;
+            
+            if (liveBoneIds && liveBoneIds[i]) {
+                const liveBoneId = liveBoneIds[i];
+                const liveWm = engineInstance.sceneGraph.getWorldMatrix(liveBoneId);
+                if (liveWm) {
+                    // Use the actual Entity position
+                    pos = { x: liveWm[12], y: liveWm[13], z: liveWm[14] };
+                    
+                    // Calculate axes from live matrix (Columns 0, 1, 2)
+                    // Normalize to ensure consistent visualization length regardless of scaling
+                    const lx = Math.sqrt(liveWm[0]**2 + liveWm[1]**2 + liveWm[2]**2) || 1;
+                    rx = { x: liveWm[0]/lx, y: liveWm[1]/lx, z: liveWm[2]/lx };
+                    
+                    const ly = Math.sqrt(liveWm[4]**2 + liveWm[5]**2 + liveWm[6]**2) || 1;
+                    ry = { x: liveWm[4]/ly, y: liveWm[5]/ly, z: liveWm[6]/ly };
+                    
+                    const lz = Math.sqrt(liveWm[8]**2 + liveWm[9]**2 + liveWm[10]**2) || 1;
+                    rz = { x: liveWm[8]/lz, y: liveWm[9]/lz, z: liveWm[10]/lz };
 
-            // Extract rotation basis vectors from bind pose
-            // Column 0 = X, Column 1 = Y, Column 2 = Z
-            const rx = { x: bone.bindPose[0], y: bone.bindPose[1], z: bone.bindPose[2] };
-            const ry = { x: bone.bindPose[4], y: bone.bindPose[5], z: bone.bindPose[6] };
-            const rz = { x: bone.bindPose[8], y: bone.bindPose[9], z: bone.bindPose[10] };
+                    usedLiveEntity = true;
+                }
+            }
 
-            if (this.options.drawJoints) {
-                // Special handling for Root: Draw Maya-style wire sphere
-                if (isRoot) {
+            // Fallback: If no entity found (or detached), calculate from BindPose + Parent Mesh
+            if (!usedLiveEntity) {
+                // Extract world position from bind pose (local relative to model root) transformed by Entity World Matrix
+                const bx = bone.bindPose[12];
+                const by = bone.bindPose[13];
+                const bz = bone.bindPose[14];
+                pos = transform(bx, by, bz);
+
+                // Extract rotation basis vectors from bind pose
+                // Column 0 = X, Column 1 = Y, Column 2 = Z
+                const brx = { x: bone.bindPose[0], y: bone.bindPose[1], z: bone.bindPose[2] };
+                const bry = { x: bone.bindPose[4], y: bone.bindPose[5], z: bone.bindPose[6] };
+                const brz = { x: bone.bindPose[8], y: bone.bindPose[9], z: bone.bindPose[10] };
+
+                // Transform local basis vectors to world space
+                rx = rotate(brx.x, brx.y, brx.z);
+                ry = rotate(bry.x, bry.y, bry.z);
+                rz = rotate(brz.x, brz.y, brz.z);
+            }
+
+            if (isRoot) {
+                // Root axis: always for standalone skeleton assets, otherwise follow drawAxes
+                const drawRootAxis = isStandalone || this.options.drawAxes;
+                if (drawRootAxis) {
+                    const axisScale = 0.35 * this.options.rootScale;
+                    this.drawAxis(debug, pos, rx, ry, rz, axisScale);
+                }
+
+                // Root sphere (keep as requested)
+                if (this.options.drawJoints) {
                     const radius = 0.3 * this.options.rootScale; // World unit size approx
                     this.drawWireSphere(debug, pos, radius, this.options.rootColor);
-                } else {
-                    // Standard joint dot
+                }
+            } else {
+                // Standard joint dot
+                if (this.options.drawJoints) {
                     let r = this.options.jointRadius;
                     const mult = bone.visual?.size ?? 1.0;
                     r *= mult;
@@ -155,29 +215,33 @@ export class SkeletonTool {
                 }
             }
 
-            if (this.options.drawAxes) {
+            if (this.options.drawAxes && !isRoot) {
                 const axisScale = 0.3; // Length of debug axes
-                
-                // Transform local basis vectors to world space
-                const wx = rotate(rx.x, rx.y, rx.z);
-                const wy = rotate(ry.x, ry.y, ry.z);
-                const wz = rotate(rz.x, rz.y, rz.z);
-
-                // Draw X (Red)
-                debug.drawLine(pos, { x: pos.x + wx.x * axisScale, y: pos.y + wx.y * axisScale, z: pos.z + wx.z * axisScale }, { r: 1, g: 0, b: 0 });
-                // Draw Y (Green)
-                debug.drawLine(pos, { x: pos.x + wy.x * axisScale, y: pos.y + wy.y * axisScale, z: pos.z + wy.z * axisScale }, { r: 0, g: 1, b: 0 });
-                // Draw Z (Blue)
-                debug.drawLine(pos, { x: pos.x + wz.x * axisScale, y: pos.y + wz.y * axisScale, z: pos.z + wz.z * axisScale }, { r: 0, g: 0, b: 1 });
+                this.drawAxis(debug, pos, rx, ry, rz, axisScale);
             }
 
             // Draw bone connection line
             if (this.options.drawBones && !isRoot && typeof p === 'number' && p >= 0 && p < bones.length) {
-                const parent = bones[p];
-                if (parent?.bindPose) {
-                    const pPos = transform(parent.bindPose[12], parent.bindPose[13], parent.bindPose[14]);
-                    debug.drawLine(pPos, pos, this.options.boneColor);
+                let pPos = { x: 0, y: 0, z: 0 };
+                let pUsedLive = false;
+
+                if (liveBoneIds && liveBoneIds[p]) {
+                    const pLiveId = liveBoneIds[p];
+                    const pWm = engineInstance.sceneGraph.getWorldMatrix(pLiveId);
+                    if (pWm) {
+                        pPos = { x: pWm[12], y: pWm[13], z: pWm[14] };
+                        pUsedLive = true;
+                    }
                 }
+
+                if (!pUsedLive) {
+                    const parent = bones[p];
+                    if (parent?.bindPose) {
+                        pPos = transform(parent.bindPose[12], parent.bindPose[13], parent.bindPose[14]);
+                    }
+                }
+                
+                debug.drawLine(pPos, pos, this.options.boneColor);
             }
         }
     }
@@ -225,6 +289,19 @@ export class SkeletonTool {
             debug.drawLine(prev, next, color);
             prev = next;
         }
+    }
+
+    private drawAxis(
+        debug: DebugRenderer,
+        origin: Vec3,
+        xAxis: Vec3,
+        yAxis: Vec3,
+        zAxis: Vec3,
+        scale: number
+    ) {
+        debug.drawLine(origin, { x: origin.x + xAxis.x * scale, y: origin.y + xAxis.y * scale, z: origin.z + xAxis.z * scale }, { r: 1, g: 0, b: 0 });
+        debug.drawLine(origin, { x: origin.x + yAxis.x * scale, y: origin.y + yAxis.y * scale, z: origin.z + yAxis.z * scale }, { r: 0, g: 1, b: 0 });
+        debug.drawLine(origin, { x: origin.x + zAxis.x * scale, y: origin.y + zAxis.y * scale, z: origin.z + zAxis.z * scale }, { r: 0, g: 0, b: 1 });
     }
 }
 
