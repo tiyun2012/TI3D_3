@@ -1,4 +1,3 @@
-
 import React, { useState, useContext, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
@@ -7,643 +6,283 @@ import { EditorContext } from '@/editor/state/EditorContext';
 import { WindowManagerContext } from './WindowManager';
 import { MATERIAL_TEMPLATES } from '@/engine/MaterialTemplates';
 import { engineInstance } from '@/engine/engine';
-import { NodeGraph } from './NodeGraph'; 
+import { NodeGraph } from './NodeGraph';
 import { ImportWizard } from './ImportWizard';
 import { StaticMeshEditor } from './StaticMeshEditor';
 import { consoleService } from '@/engine/Console';
 import { Asset, AssetType } from '@/types';
+import { eventBus } from '@/engine/EventBus';
+
 type ViewMode = 'GRID' | 'LIST';
 
-// Helper to get subfolders (extracted for usage in component)
 const getSubFolders = (assets: Asset[], path: string) => {
-    return assets.filter(a => a.type === 'FOLDER' && a.path === path).sort((a,b) => a.name.localeCompare(b.name));
+    return assets.filter(a => a.type === 'FOLDER' && a.path === path);
 };
 
-// Extracted FolderTreeItem Component
-// Prevents unmounting on parent re-renders and handles auto-expansion
-const FolderTreeItem: React.FC<{ 
-    path: string, 
-    name: string, 
-    depth: number,
-    currentPath: string,
-    allAssets: Asset[],
-    onNavigate: (path: string) => void,
-    onContextMenu: (e: React.MouseEvent, path: string) => void,
-    // Renaming Props
-    renamingAssetId: string | null,
-    onRenameStart: (id: string, name: string) => void,
-    renameValue: string,
-    setRenameValue: (val: string) => void,
-    onRenameSubmit: () => void
-}> = ({ 
-    path, name, depth, currentPath, allAssets, onNavigate, onContextMenu,
-    renamingAssetId, onRenameStart, renameValue, setRenameValue, onRenameSubmit
-}) => {
-    const fullPath = path === '/' ? `/${name}` : `${path}/${name}`;
-    const isRoot = path === '' && name === ''; // Root case "/"
-    
-    // For Root display logic
-    const displayPath = isRoot ? '/' : fullPath;
-    const displayName = isRoot ? 'Root' : name;
-    
-    const [expanded, setExpanded] = useState(false);
-    const renameInputRef = useRef<HTMLInputElement>(null);
+const AssetItem: React.FC<{ 
+    asset: Asset; 
+    selected: boolean; 
+    onSelect: (multi: boolean) => void; 
+    onDoubleClick: () => void;
+    onContextMenu: (e: React.MouseEvent) => void;
+    viewMode: ViewMode;
+}> = ({ asset, selected, onSelect, onDoubleClick, onContextMenu, viewMode }) => {
+    const iconName = asset.type === 'FOLDER' ? 'Folder' : (
+        asset.type === 'MATERIAL' ? 'Palette' : (
+        asset.type === 'MESH' ? 'Box' : (
+        asset.type === 'SKELETAL_MESH' ? 'PersonStanding' : (
+        asset.type === 'TEXTURE' ? 'Image' : (
+        asset.type === 'SCRIPT' ? 'FileCode' : (
+        asset.type === 'RIG' ? 'GitBranch' : (
+        asset.type === 'SCENE' ? 'Globe' : 'File'
+    )))))));
 
-    // Identify the asset for this folder to allow renaming
-    const myAsset = useMemo(() => {
-        if (isRoot) return null; // Virtual root
-        // Find folder asset matching this path/name
-        const searchPath = path === '' ? '/' : path;
-        return allAssets.find(a => a.type === 'FOLDER' && a.name === name && a.path === searchPath);
-    }, [allAssets, path, name, isRoot]);
-
-    const isRenaming = myAsset && renamingAssetId === myAsset.id;
-
-    // Auto-expand/collapse logic based on current path
-    useEffect(() => {
-        const checkPath = displayPath === '/' ? '/' : displayPath + '/';
-        const curr = currentPath === '/' ? '/' : currentPath + '/';
-        // Expand if strictly contains or is the current path, otherwise collapse
-        if (curr.startsWith(checkPath) || currentPath === displayPath) {
-            setExpanded(true);
-        } else {
-            setExpanded(false);
-        }
-    }, [currentPath, displayPath]);
-
-    useEffect(() => {
-        if (isRenaming && renameInputRef.current) {
-            renameInputRef.current.focus();
-            renameInputRef.current.select();
-        }
-    }, [isRenaming]);
-
-    // Memoize children for performance
-    const subFolders = useMemo(() => getSubFolders(allAssets, displayPath), [allAssets, displayPath]);
-    const hasChildren = subFolders.length > 0;
-    const isSelected = currentPath === displayPath;
+    const color = asset.type === 'FOLDER' ? 'text-yellow-500' : (
+        asset.type === 'MATERIAL' ? 'text-emerald-400' : (
+        asset.type === 'MESH' ? 'text-blue-400' : (
+        asset.type === 'SKELETAL_MESH' ? 'text-purple-400' : 'text-text-secondary'
+    )));
 
     return (
-        <div>
-            <div 
-                className={`group flex items-center gap-1 py-1 px-2 cursor-pointer select-none transition-colors border-l-2
-                    ${isSelected ? 'border-transparent text-accent' : 'border-transparent text-text-secondary hover:text-white'}
-                `}
-                style={{ paddingLeft: `${depth * 12 + 8}px` }}
-                onClick={() => onNavigate(displayPath)}
-                onContextMenu={(e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    onContextMenu(e, displayPath);
-                }}
-            >
-                <div 
-                    onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-                    className={`w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 ${hasChildren ? 'visible' : 'invisible'}`}
-                >
-                    <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={10} />
-                </div>
-                <Icon 
-                    name={expanded ? 'FolderOpen' : 'Folder'} 
-                    size={12} 
-                    className={isSelected ? 'text-accent' : (expanded ? 'text-white' : 'text-[#a8b3b1] group-hover:text-white')} 
-                />
-                
-                {isRenaming ? (
-                    <input 
-                        ref={renameInputRef}
-                        className="bg-black/50 border border-accent text-white text-xs px-1 rounded outline-none min-w-[50px] flex-1"
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => { 
-                            if(e.key==='Enter') onRenameSubmit(); 
-                            if(e.key==='Escape') onRenameStart('', ''); // Cancel
-                        }}
-                        onBlur={onRenameSubmit}
-                        onClick={e => e.stopPropagation()}
-                    />
+        <div 
+            className={`group relative flex ${viewMode === 'GRID' ? 'flex-col items-center p-2' : 'flex-row items-center px-2 py-1'} rounded cursor-pointer transition-colors border border-transparent
+                ${selected ? 'bg-accent/20 border-accent/50' : 'hover:bg-white/5 hover:border-white/5'}
+            `}
+            onClick={(e) => {
+                e.stopPropagation();
+                onSelect(e.shiftKey || e.ctrlKey);
+            }}
+            onDoubleClick={(e) => {
+                e.stopPropagation();
+                onDoubleClick();
+            }}
+            onContextMenu={onContextMenu}
+        >
+            <div className={`${viewMode === 'GRID' ? 'w-12 h-12 mb-2 bg-black/20' : 'w-6 h-6 mr-3'} rounded flex items-center justify-center shrink-0`}>
+                {asset.type === 'TEXTURE' ? (
+                    <img src={(asset as any).source} className="w-full h-full object-cover rounded" />
                 ) : (
-                    <span 
-                        className={`text-xs truncate ${isSelected ? 'font-bold' : ''}`}
-                        onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            if (myAsset) onRenameStart(myAsset.id, myAsset.name);
-                        }}
-                    >
-                        {displayName}
-                    </span>
+                    <Icon name={iconName as any} size={viewMode === 'GRID' ? 24 : 14} className={color} />
                 )}
             </div>
-            {expanded && subFolders.map(f => (
-                <FolderTreeItem 
-                    key={f.id} 
-                    path={displayPath} 
-                    name={f.name} 
-                    depth={depth + 1}
-                    currentPath={currentPath}
-                    allAssets={allAssets}
-                    onNavigate={onNavigate}
-                    onContextMenu={onContextMenu}
-                    renamingAssetId={renamingAssetId}
-                    onRenameStart={onRenameStart}
-                    renameValue={renameValue}
-                    setRenameValue={setRenameValue}
-                    onRenameSubmit={onRenameSubmit}
-                />
-            ))}
+            <span className={`text-xs text-center truncate w-full ${selected ? 'text-white font-bold' : 'text-text-primary group-hover:text-white'}`}>
+                {asset.name}
+            </span>
         </div>
     );
 };
 
 export const ProjectPanel: React.FC = () => {
-    const { setSelectedIds, setSelectedAssetIds, selectedAssetIds, setSelectionType } = useContext(EditorContext)!;
+    const { selectedAssetIds, setSelectedAssetIds, setInspectedNode } = useContext(EditorContext)!;
     const wm = useContext(WindowManagerContext);
     
-    // --- State ---
     const [currentPath, setCurrentPath] = useState('/Content');
-    const [filterType, setFilterType] = useState<AssetType | 'ALL'>('ALL');
-    const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('GRID');
-    const [scale, setScale] = useState(64);
-    const [favorites, setFavorites] = useState<string[]>(['/Content', '/Content/Materials', '/Content/Scenes']);
-    const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
-    const [renameValue, setRenameValue] = useState('');
-    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, assetId?: string, path?: string, type: 'ASSET'|'FOLDER'|'BG', visible: boolean } | null>(null);
-    const [refresh, setRefresh] = useState(0); 
+    const [assets, setAssets] = useState<Asset[]>([]);
+    const [search, setSearch] = useState('');
+    const [showImport, setShowImport] = useState(false);
     
-    // Resizable Sidebar State
-    const [sidebarWidth, setSidebarWidth] = useState(192);
-    const [isResizing, setIsResizing] = useState(false);
+    // Editors
+    const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
 
-    const renameInputRef = useRef<HTMLInputElement>(null);
+    // Refresh assets
+    const refresh = () => {
+        setAssets(assetManager.getAllAssets());
+    };
 
-    // --- Helpers ---
-    const allAssets = useMemo(() => assetManager.getAllAssets(), [refresh]); // Refresh triggers re-fetch
+    useEffect(() => {
+        refresh();
+        const unsub1 = eventBus.on('ASSET_CREATED', refresh);
+        const unsub2 = eventBus.on('ASSET_DELETED', refresh);
+        const unsub3 = eventBus.on('ASSET_UPDATED', refresh);
+        return () => { unsub1(); unsub2(); unsub3(); };
+    }, []);
 
-    const getFolderContents = (path: string) => {
-        return allAssets.filter(a => {
-            // Exact match for parent path
-            if (a.path !== path) return false;
-            // Filter logic
-            if (filterType !== 'ALL' && a.type !== 'FOLDER' && a.type !== filterType) return false;
-            if (searchQuery && !a.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-            return true;
+    const filteredAssets = useMemo(() => {
+        return assets.filter(a => {
+            if (search) return a.name.toLowerCase().includes(search.toLowerCase());
+            return a.path === currentPath;
         }).sort((a, b) => {
             if (a.type === 'FOLDER' && b.type !== 'FOLDER') return -1;
             if (a.type !== 'FOLDER' && b.type === 'FOLDER') return 1;
             return a.name.localeCompare(b.name);
         });
+    }, [assets, currentPath, search]);
+
+    const handleNavigate = (path: string) => {
+        setCurrentPath(path);
+        setSelectedAssetIds([]);
     };
 
-    const getSubFolders = (path: string) => {
-        return allAssets.filter(a => a.type === 'FOLDER' && a.path === path).sort((a,b) => a.name.localeCompare(b.name));
+    const handleBreadcrumb = (index: number) => {
+        const parts = currentPath.split('/').filter(Boolean);
+        const newPath = '/' + parts.slice(0, index + 1).join('/');
+        handleNavigate(newPath);
     };
 
-    useEffect(() => {
-        const close = () => setContextMenu(null);
-        window.addEventListener('click', close);
-        return () => window.removeEventListener('click', close);
-    }, []);
-
-    useEffect(() => {
-        // Focus for Grid/List items
-        if (renamingAssetId && renameInputRef.current) {
-            renameInputRef.current.focus();
-            renameInputRef.current.select();
-        }
-    }, [renamingAssetId]);
-
-    // Resize Handler
-    useEffect(() => {
-        if (!isResizing) return;
-        
-        const handleMouseMove = (e: MouseEvent) => {
-            setSidebarWidth(prev => Math.max(150, Math.min(600, prev + e.movementX)));
-        };
-        const handleMouseUp = () => {
-            setIsResizing(false);
-            document.body.style.cursor = 'default';
-        };
-        
-        document.body.style.cursor = 'col-resize';
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = 'default';
-        };
-    }, [isResizing]);
-
-    // --- Actions ---
-    const handleNavigate = (path: string) => setCurrentPath(path);
-
-    const handleRenameStart = (id: string, currentName: string) => {
-        setRenamingAssetId(id);
-        setRenameValue(currentName);
+    const handleCreate = (type: AssetType) => {
+        if (type === 'MATERIAL') assetManager.createMaterial('New Material', undefined, currentPath);
+        if (type === 'SCRIPT') assetManager.createScript('New Script', currentPath);
+        if (type === 'RIG') assetManager.createRig('New Rig', undefined, currentPath);
+        if (type === 'SCENE') assetManager.createScene('New Scene', '{}', currentPath);
+        if (type === 'FOLDER') assetManager.createFolder('New Folder', currentPath);
     };
 
-    const handleRenameSubmit = () => {
-        if (renamingAssetId && renameValue.trim()) {
-            assetManager.renameAsset(renamingAssetId, renameValue.trim());
-            setRefresh(r => r + 1);
-        }
-        setRenamingAssetId(null);
-    };
-
-    const handleCreateFolder = () => {
-        assetManager.createFolder("New Folder", currentPath);
-        setRefresh(r => r + 1);
-    };
-
-    const handleCreateAsset = (type: AssetType, templateIndex?: number) => {
-        const name = `New ${type}`; // Simple name gen
-        let created: Asset | null = null;
-        switch (type) {
-            case 'MATERIAL':
-                created = assetManager.createMaterial(name, templateIndex !== undefined ? MATERIAL_TEMPLATES[templateIndex] : undefined, currentPath);
-                break;
-            case 'SCRIPT':
-                created = assetManager.createScript(name, currentPath);
-                break;
-            case 'RIG':
-                created = assetManager.createRig(name, templateIndex !== undefined ? RIG_TEMPLATES[templateIndex] : undefined, currentPath);
-                break;
-            case 'PHYSICS_MATERIAL':
-                created = assetManager.createPhysicsMaterial(name, undefined, currentPath);
-                break;
-            case 'SKELETON':
-                created = assetManager.createSkeleton(name, currentPath);
-                break;
-            case 'SCENE':
-                created = assetManager.createScene("Untitled Scene", "{}", currentPath);
-                break;
-        }
-        setRefresh(r => r + 1);
-        if (created) {
-            setSelectedAssetIds([created.id]);
-            setSelectionType('ASSET');
-        }
-    };
-
-    const handleOpenAsset = (asset: Asset) => {
+    const handleOpen = (asset: Asset) => {
         if (asset.type === 'FOLDER') {
-            setCurrentPath(`${asset.path === '/' ? '' : asset.path}/${asset.name}`);
-        } else {
-            if (asset.type === 'SCENE') {
+            handleNavigate(`${currentPath === '/' ? '' : currentPath}/${asset.name}`);
+        } else if (asset.type === 'MATERIAL' || asset.type === 'SCRIPT' || asset.type === 'RIG') {
+            setEditingAsset(asset);
+        } else if (asset.type === 'MESH' || asset.type === 'SKELETAL_MESH') {
+            setEditingAsset(asset);
+        } else if (asset.type === 'SCENE') {
+            if (confirm("Load Scene? Unsaved changes will be lost.")) {
                 engineInstance.loadSceneFromAsset(asset.id);
             }
-            // Open Graph Editors
-            else if (asset.type === 'MATERIAL' || asset.type === 'SCRIPT' || asset.type === 'RIG') {
-                const winId = `graph_${asset.id}`;
-                wm?.registerWindow({
-                    id: winId, title: asset.name, icon: 'Workflow',
-                    content: <NodeGraph assetId={asset.id} />, width: 900, height: 600,
-                    initialPosition: { x: 150 + Math.random()*50, y: 100 + Math.random()*50 }
-                });
-                wm?.openWindow(winId);
-            } 
-            // Open Static Mesh Viewer
-            else if (asset.type === 'MESH' || asset.type === 'SKELETAL_MESH') {
-                 const winId = `mesh_${asset.id}`;
-                 wm?.registerWindow({
-                    id: winId, title: asset.name, icon: 'Box',
-                    content: <StaticMeshEditor assetId={asset.id} />, width: 600, height: 500,
-                    initialPosition: { x: 200, y: 100 }
-                 });
-                 wm?.openWindow(winId);
-            }
         }
     };
 
-    const getTypeColor = (type: AssetType) => {
-        switch(type) {
-            case 'FOLDER': return 'text-[#a8b3b1]';
-            case 'MATERIAL': return 'bg-emerald-500';
-            case 'MESH': return 'bg-cyan-500';
-            case 'SKELETAL_MESH': return 'bg-purple-500';
-            case 'SKELETON': return 'bg-fuchsia-500';
-            case 'TEXTURE': return 'bg-rose-500';
-            case 'SCRIPT': return 'bg-blue-500';
-            case 'RIG': return 'bg-orange-500';
-            case 'PHYSICS_MATERIAL': return 'bg-lime-500';
-            case 'SCENE': return 'bg-orange-600';
-            default: return 'bg-gray-500';
+    const handleDelete = (id: string) => {
+        if (confirm("Delete Asset?")) {
+            assetManager.deleteAsset(id);
+            if (selectedAssetIds.includes(id)) setSelectedAssetIds([]);
         }
     };
 
-    const getIcon = (type: AssetType) => {
-        switch(type) {
-            case 'FOLDER': return 'Folder';
-            case 'MATERIAL': return 'Palette';
-            case 'MESH': return 'Box';
-            case 'SKELETAL_MESH': return 'PersonStanding';
-            case 'SKELETON': return 'Bone';
-            case 'TEXTURE': return 'Image';
-            case 'SCRIPT': return 'FileCode';
-            case 'RIG': return 'GitBranch';
-            case 'PHYSICS_MATERIAL': return 'Activity';
-            case 'SCENE': return 'Clapperboard';
-            default: return 'File';
-        }
-    };
+    const pathParts = currentPath.split('/').filter(Boolean);
 
-    const openImportWizard = () => {
-        const winId = 'import_wizard';
-        wm?.registerWindow({
-            id: winId, title: 'Import Asset', icon: 'Import',
-            content: <ImportWizard onClose={() => wm.closeWindow(winId)} onImportSuccess={(id) => { 
-                // After import, move to current path if possible? ImportWizard puts in default locations currently.
-                // Future improvement: Allow path selection in Wizard.
-                setRefresh(r=>r+1); wm.closeWindow(winId); 
-            }} />, width: 400, height: 500
-        });
-        wm?.openWindow(winId);
-    };
-
-    const Breadcrumbs = () => {
-        const parts = currentPath.split('/').filter(Boolean);
-        return (
-            <div className="flex items-center text-xs text-text-secondary h-8 px-2 overflow-hidden">
-                <button onClick={() => setCurrentPath('/')} className="hover:text-white flex items-center"><Icon name="Home" size={12} /></button>
-                {parts.map((part, i) => {
-                    const path = '/' + parts.slice(0, i + 1).join('/');
-                    return (
-                        <React.Fragment key={path}>
-                            <span className="mx-1 opacity-50">/</span>
-                            <button onClick={() => setCurrentPath(path)} className="hover:text-white hover:underline">{part}</button>
-                        </React.Fragment>
-                    );
-                })}
-            </div>
-        );
-    };
-
-    // --- Main Render ---
     return (
-        <div className="flex h-full bg-[#1a1a1a] text-text-primary font-sans select-none" onContextMenu={(e) => {
-            e.preventDefault();
-            setContextMenu({ x: e.clientX, y: e.clientY, type: 'BG', visible: true });
-        }}>
-            {/* SIDEBAR */}
-            <div style={{ width: sidebarWidth }} className="bg-[#151515] border-r border-black flex flex-col shrink-0 transition-none relative">
-                <div className="p-2 text-[10px] font-bold text-text-secondary uppercase tracking-wider flex justify-between items-center group">
-                    <span>Favorites</span>
+        <div className="h-full flex flex-col bg-[#1a1a1a] text-xs font-sans relative">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between p-2 border-b border-white/5 bg-panel-header">
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setShowImport(true)} className="flex items-center gap-1 px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded transition-colors shadow-sm">
+                        <Icon name="Upload" size={12} /> Import
+                    </button>
+                    <div className="h-4 w-px bg-white/10 mx-1"></div>
+                    <button onClick={() => handleCreate('MATERIAL')} className="p-1.5 hover:bg-white/10 rounded text-text-secondary hover:text-white" title="New Material"><Icon name="Palette" size={14}/></button>
+                    <button onClick={() => handleCreate('SCRIPT')} className="p-1.5 hover:bg-white/10 rounded text-text-secondary hover:text-white" title="New Script"><Icon name="FileCode" size={14}/></button>
+                    <button onClick={() => handleCreate('RIG')} className="p-1.5 hover:bg-white/10 rounded text-text-secondary hover:text-white" title="New Rig"><Icon name="GitBranch" size={14}/></button>
+                    <button onClick={() => handleCreate('FOLDER')} className="p-1.5 hover:bg-white/10 rounded text-text-secondary hover:text-white" title="New Folder"><Icon name="FolderPlus" size={14}/></button>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar pb-2">
-                    {favorites.map(path => (
-                        <div key={path} className={`flex items-center gap-2 px-3 py-1 text-xs cursor-pointer ${currentPath === path ? 'text-accent font-bold' : 'text-text-secondary hover:text-white'}`} onClick={() => handleNavigate(path)}>
-                            <Icon name="Star" size={10} className="text-yellow-500 fill-current" />
-                            <span className="truncate">{path.split('/').pop() || 'Root'}</span>
-                        </div>
-                    ))}
-                    
-                    <div className="mt-4 px-2 text-[10px] font-bold text-text-secondary uppercase tracking-wider">Content</div>
-                    <FolderTreeItem 
-                        path="" 
-                        name="Content" 
-                        depth={0} 
-                        currentPath={currentPath}
-                        allAssets={allAssets}
-                        onNavigate={handleNavigate}
-                        onContextMenu={(e, p) => setContextMenu({ x: e.clientX, y: e.clientY, path: p, type: 'FOLDER', visible: true })}
-                        renamingAssetId={renamingAssetId}
-                        onRenameStart={handleRenameStart}
-                        renameValue={renameValue}
-                        setRenameValue={setRenameValue}
-                        onRenameSubmit={handleRenameSubmit}
+                <div className="flex items-center gap-2">
+                    <input 
+                        type="text" 
+                        placeholder="Search..." 
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="bg-black/20 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-accent w-32 transition-all focus:w-48"
                     />
+                    <div className="flex bg-black/20 rounded p-0.5 border border-white/5">
+                        <button onClick={() => setViewMode('GRID')} className={`p-1 rounded ${viewMode==='GRID'?'bg-white/10 text-white':'text-text-secondary'}`}><Icon name="LayoutGrid" size={12}/></button>
+                        <button onClick={() => setViewMode('LIST')} className={`p-1 rounded ${viewMode==='LIST'?'bg-white/10 text-white':'text-text-secondary'}`}><Icon name="List" size={12}/></button>
+                    </div>
                 </div>
             </div>
 
-            {/* RESIZER HANDLE */}
-            <div className="relative w-0 h-full z-50">
-                <div 
-                    className="absolute top-0 bottom-0 -left-2 w-4 cursor-col-resize flex flex-col items-center justify-center group"
-                    onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+            {/* Breadcrumb */}
+            <div className="flex items-center px-3 py-1.5 border-b border-white/5 bg-black/10 gap-1 overflow-x-auto custom-scrollbar">
+                <button 
+                    onClick={() => handleNavigate('/Content')} 
+                    className={`flex items-center gap-1 hover:text-white ${currentPath === '/Content' ? 'text-white font-bold' : 'text-text-secondary'}`}
                 >
-                    <div className={`
-                        w-1 h-[15%] min-h-[24px] rounded-full flex flex-col items-center justify-center gap-0.5 transition-all duration-200
-                        bg-black border shadow-[0_0_10px_rgba(0,0,0,0.5)]
-                        ${isResizing 
-                            ? 'scale-110 border-white/40' // Active: Larger, brighter border, pure black
-                            : 'border-white/10 group-hover:border-white/30' // Idle: Dim border, brighten on hover
-                        }
-                    `}>
-                        {/* Grip Dots */}
-                        <div className={`w-0.5 h-0.5 rounded-full ${isResizing ? 'bg-white/90' : 'bg-white/20'}`} />
-                        <div className={`w-0.5 h-0.5 rounded-full ${isResizing ? 'bg-white/90' : 'bg-white/20'}`} />
-                        <div className={`w-0.5 h-0.5 rounded-full ${isResizing ? 'bg-white/90' : 'bg-white/20'}`} />
-                    </div>
-                </div>
+                    <Icon name="Home" size={10} /> Content
+                </button>
+                {pathParts.slice(1).map((part, i) => (
+                    <React.Fragment key={i}>
+                        <Icon name="ChevronRight" size={10} className="text-text-secondary opacity-50" />
+                        <button 
+                            onClick={() => handleBreadcrumb(i + 1)}
+                            className={`hover:text-white ${i === pathParts.length - 2 ? 'text-white font-bold' : 'text-text-secondary'}`}
+                        >
+                            {part}
+                        </button>
+                    </React.Fragment>
+                ))}
             </div>
 
-            {/* MAIN CONTENT */}
-            <div className="flex-1 flex flex-col min-w-0">
-                {/* Toolbar */}
-                <div className="h-10 bg-panel-header border-b border-black/20 flex items-center justify-between px-2 shrink-0">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <button className={`p-1 rounded ${viewMode==='GRID'?'bg-white/10 text-white':'text-text-secondary'}`} onClick={()=>setViewMode('GRID')}><Icon name="LayoutGrid" size={14}/></button>
-                        <button className={`p-1 rounded ${viewMode==='LIST'?'bg-white/10 text-white':'text-text-secondary'}`} onClick={()=>setViewMode('LIST')}><Icon name="List" size={14}/></button>
-                        <div className="h-4 w-px bg-white/10 mx-1"></div>
-                        <Breadcrumbs />
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <Icon name="Search" size={12} className="absolute left-2 top-1.5 text-text-secondary" />
-                            <input 
-                                className="bg-black/20 border border-white/5 rounded-full pl-7 pr-2 py-0.5 text-xs w-32 focus:w-48 transition-all focus:border-accent outline-none" 
-                                placeholder="Search assets..." 
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                            />
-
+            {/* Grid Area */}
+            <div 
+                className="flex-1 overflow-y-auto p-2 custom-scrollbar"
+                onClick={() => setSelectedAssetIds([])}
+            >
+                <div className={viewMode === 'GRID' ? 'grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2' : 'flex flex-col gap-1'}>
+                    {currentPath !== '/Content' && !search && (
+                        <div 
+                            className={`group flex ${viewMode === 'GRID' ? 'flex-col items-center p-2' : 'flex-row items-center px-2 py-1'} rounded cursor-pointer hover:bg-white/5 border border-transparent`}
+                            onDoubleClick={() => handleNavigate(currentPath.split('/').slice(0, -1).join('/') || '/')}
+                        >
+                            <div className={`${viewMode === 'GRID' ? 'w-12 h-12 mb-2 bg-black/20' : 'w-6 h-6 mr-3'} rounded flex items-center justify-center`}>
+                                <Icon name="Folder" size={viewMode === 'GRID' ? 24 : 14} className="text-text-secondary opacity-50" />
+                            </div>
+                            <span className="text-xs text-text-secondary">..</span>
                         </div>
-                        <button onClick={openImportWizard} className="bg-accent hover:bg-accent-hover text-white text-[10px] font-bold px-3 py-1 rounded transition-colors flex items-center gap-1">
-                            <Icon name="Import" size={12} /> <span className="hidden sm:inline">Import</span>
-                        </button>
-                    </div>
-                </div>
-
-                {/* Filters */}
-                <div className="h-8 bg-panel border-b border-black/10 flex items-center gap-1 px-2 overflow-x-auto custom-scrollbar shrink-0">
-                    <button onClick={() => setFilterType('ALL')} className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors border ${filterType === 'ALL' ? 'bg-white/10 border-white/20 text-white' : 'border-transparent text-text-secondary hover:bg-white/5'}`}>All</button>
-                    {['SCENE', 'MATERIAL', 'MESH', 'SKELETAL_MESH', 'TEXTURE', 'SCRIPT', 'RIG', 'PHYSICS_MATERIAL'].map(t => (
-                        <button key={t} onClick={() => setFilterType(t as AssetType)} className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors border flex items-center gap-1 ${filterType === t ? 'bg-white/10 border-white/20 text-white' : 'border-transparent text-text-secondary hover:bg-white/5'}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${getTypeColor(t as AssetType).replace('bg-', 'bg-')}`}></div>
-                            {t.replace('_', ' ')}
-                        </button>
+                    )}
+                    
+                    {filteredAssets.map(asset => (
+                        <AssetItem 
+                            key={asset.id} 
+                            asset={asset} 
+                            viewMode={viewMode}
+                            selected={selectedAssetIds.includes(asset.id)}
+                            onSelect={(multi) => {
+                                wm?.openWindow('inspector');
+                                if (multi) setSelectedAssetIds([...selectedAssetIds, asset.id]);
+                                else setSelectedAssetIds([asset.id]);
+                                setInspectedNode(null); // Clear graph selection
+                            }}
+                            onDoubleClick={() => handleOpen(asset)}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleDelete(asset.id);
+                            }}
+                        />
                     ))}
                 </div>
-
-                {/* Grid */}
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar" onClick={() => setSelectedAssetIds([])}>
-                    <div className={`grid gap-4 ${viewMode === 'GRID' ? 'grid-cols-[repeat(auto-fill,minmax(90px,1fr))]' : 'grid-cols-1'}`}>
-                        {getFolderContents(currentPath).map(asset => {
-                            const isSelected = selectedAssetIds.includes(asset.id);
-                            const isRenaming = renamingAssetId === asset.id;
-                            
-                            return (
-                                <div 
-                                    key={asset.id} 
-                                    className={`group relative flex ${viewMode === 'GRID' ? 'flex-col' : 'flex-row items-center gap-3'} 
-                                        p-1 rounded border border-transparent transition-all cursor-pointer
-                                    `}
-                                    onClick={(e) => { e.stopPropagation(); setSelectedAssetIds([asset.id]); setSelectionType('ASSET'); }}
-                                    onDoubleClick={() => handleOpenAsset(asset)}
-                                    onContextMenu={(e) => {
-                                        e.preventDefault(); e.stopPropagation();
-                                        setContextMenu({ x: e.clientX, y: e.clientY, assetId: asset.id, path: asset.path, type: asset.type === 'FOLDER' ? 'FOLDER' : 'ASSET', visible: true });
-                                        setSelectedAssetIds([asset.id]);
-                                    }}
-                                    draggable={asset.type !== 'FOLDER'}
-                                    onDragStart={(e) => e.dataTransfer.setData('application/ti3d-asset', asset.id)}
-                                >
-                                    {/* Thumbnail */}
-                                    <div 
-                                        className={`relative bg-black/30 rounded flex items-center justify-center overflow-hidden shadow-inner
-                                            ${viewMode === 'GRID' ? `w-full aspect-square` : 'w-8 h-8'}
-                                        `}
-                                    >
-                                        <Icon 
-                                            name={getIcon(asset.type) as any} 
-                                            size={viewMode === 'GRID' ? scale * 0.6 : 16} 
-                                            className={`drop-shadow-lg transition-colors ${isSelected ? 'text-accent' : `${asset.type === 'FOLDER' ? 'text-[#a8b3b1]' : 'text-text-secondary'} group-hover:text-white`}`}
-                                        />
-                                        {/* Color Bar for Assets */}
-                                        {asset.type !== 'FOLDER' && (
-                                            <div className={`absolute bottom-0 left-0 right-0 h-1 ${getTypeColor(asset.type)} opacity-80`} />
-                                        )}
-                                    </div>
-
-                                    {/* Label */}
-                                    <div className={`mt-1 px-1 min-w-0 ${viewMode === 'GRID' ? 'text-center' : 'text-left'}`}>
-                                        {isRenaming ? (
-                                            <input 
-                                                ref={renameInputRef}
-                                                className="w-full bg-black/50 border border-accent text-white text-[10px] px-1 rounded outline-none"
-                                                value={renameValue}
-                                                onChange={e => setRenameValue(e.target.value)}
-                                                onKeyDown={e => { if(e.key==='Enter') handleRenameSubmit(); if(e.key==='Escape') setRenamingAssetId(null); }}
-                                                onBlur={handleRenameSubmit}
-                                                onClick={e => e.stopPropagation()}
-                                            />
-                                        ) : (
-                                            <div 
-                                                className={`text-[10px] font-medium truncate leading-tight break-words whitespace-normal line-clamp-2 ${isSelected ? 'text-accent' : 'text-gray-300 group-hover:text-white'}`}
-                                                onDoubleClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleRenameStart(asset.id, asset.name);
-                                                }}
-                                            >
-                                                {asset.name}
-                                            </div>
-                                        )}
-                                        {viewMode === 'LIST' && <span className="text-[9px] text-text-secondary ml-2 opacity-50">{asset.type}</span>}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    {getFolderContents(currentPath).length === 0 && (
-                        <div className="flex flex-col items-center justify-center h-full text-text-secondary opacity-30 select-none">
-                            <Icon name="FolderOpen" size={48} strokeWidth={1} />
-                            <span className="mt-2 text-xs">Folder is empty</span>
-                            <span className="text-[10px]">Right-click to add content</span>
-                        </div>
-                    )}
-                </div>
             </div>
 
-            {/* CONTEXT MENU */}
-            {contextMenu && contextMenu.visible && createPortal(
-                <div 
-                    className="fixed bg-[#252525] border border-white/10 shadow-2xl rounded py-1 min-w-[160px] text-xs z-[9999]"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    {contextMenu.type === 'BG' && (
-                        <>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex items-center gap-2" onClick={() => { handleCreateFolder(); setContextMenu(null); }}>
-                                <Icon name="FolderPlus" size={14} /> New Folder
-                            </div>
-                            <div className="border-t border-white/10 my-1"></div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('SCENE'); setContextMenu(null); }}>Scene</div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('MATERIAL'); setContextMenu(null); }}>Material</div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('SCRIPT'); setContextMenu(null); }}>Script</div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('RIG'); setContextMenu(null); }}>Rig</div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('PHYSICS_MATERIAL'); setContextMenu(null); }}>Physics Material</div>
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('SKELETON'); setContextMenu(null); }}>Skeleton</div>
-                        </>
-                    )}
+            {/* Modals */}
+            {showImport && (
+                <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-8">
+                    <div className="w-full max-w-lg h-[500px] bg-panel border border-white/10 rounded-lg shadow-2xl flex flex-col overflow-hidden">
+                        <div className="px-4 py-3 border-b border-white/10 bg-panel-header flex justify-between items-center">
+                            <span className="font-bold text-white">Import Asset</span>
+                            <button onClick={() => setShowImport(false)}><Icon name="X" size={16} /></button>
+                        </div>
+                        <ImportWizard 
+                            onClose={() => setShowImport(false)} 
+                            onImportSuccess={(id) => {
+                                const asset = assetManager.getAsset(id);
+                                if (asset && asset.type !== 'FOLDER') {
+                                    asset.path = currentPath;
+                                }
+                                refresh();
+                            }} 
+                        />
+                    </div>
+                </div>
+            )}
 
-                    {(contextMenu.type === 'ASSET' || contextMenu.type === 'FOLDER') && (
-                        <>
-                            {contextMenu.type === 'ASSET' && (() => {
-                                const a = contextMenu.assetId ? assetManager.getAsset(contextMenu.assetId) : null;
-                                const canPlace = a && (a.type === 'MESH' || a.type === 'SKELETAL_MESH' || a.type === 'SKELETON');
-                                if (!canPlace) return null;
-                                return (
-                                    <>
-                                        <div
-                                            className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex items-center gap-2"
-                                            onClick={() => {
-                                                if (contextMenu.assetId) {
-                                                    const newId = engineInstance.createEntityFromAsset(contextMenu.assetId, { x: 0, y: 0, z: 0 });
-                                                    if (newId) {
-                                                        setSelectedAssetIds([]);
-                                                        setSelectionType('ENTITY');
-                                                        setSelectedIds([newId]);
-                                                    }
-                                                }
-                                                setContextMenu(null);
-                                            }}
-                                        >
-                                            <Icon name="PlusSquare" size={14} /> Place in Scene
-                                        </div>
-                                        <div className="border-t border-white/10 my-1"></div>
-                                    </>
-                                );
-                            })()}
-                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex items-center gap-2" onClick={() => { 
-                                if (contextMenu.assetId) {
-                                    handleRenameStart(contextMenu.assetId, assetManager.getAsset(contextMenu.assetId)?.name || '');
-                                }
-                                setContextMenu(null);
-                            }}>
-                                <Icon name="Edit2" size={14} /> Rename
-                            </div>
-                            {contextMenu.type === 'FOLDER' && (
-                                <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex items-center gap-2" onClick={() => {
-                                    if (contextMenu.path && !favorites.includes(contextMenu.path)) setFavorites([...favorites, contextMenu.path]);
-                                    setContextMenu(null);
-                                }}>
-                                    <Icon name="Star" size={14} /> Add to Favorites
-                                </div>
-                            )}
-                            {contextMenu.type === 'ASSET' && (
-                                <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex items-center gap-2" onClick={() => {
-                                    if(contextMenu.assetId) assetManager.duplicateAsset(contextMenu.assetId);
-                                    setRefresh(r=>r+1);
-                                    setContextMenu(null);
-                                }}>
-                                    <Icon name="Copy" size={14} /> Duplicate
-                                </div>
-                            )}
-                            <div className="border-t border-white/10 my-1"></div>
-                            <div className="px-3 py-1.5 hover:bg-red-500/20 hover:text-red-400 cursor-pointer flex items-center gap-2" onClick={() => {
-                                if (contextMenu.assetId) {
-                                    assetManager.deleteAsset(contextMenu.assetId);
-                                    setRefresh(r=>r+1);
-                                }
-                                setContextMenu(null);
-                            }}>
-                                <Icon name="Trash2" size={14} /> Delete
-                            </div>
-                        </>
-                    )}
-                </div>,
-                document.body
+            {editingAsset && (
+                <div className="absolute inset-0 bg-[#101010] z-[60] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                    <div className="h-8 bg-panel-header border-b border-white/10 flex items-center justify-between px-3 shrink-0">
+                        <div className="flex items-center gap-2 font-bold text-white">
+                            <Icon name="Edit" size={14} className="text-accent" />
+                            {editingAsset.name}
+                        </div>
+                        <button onClick={() => setEditingAsset(null)} className="p-1 hover:bg-white/10 rounded text-text-secondary hover:text-white">
+                            <Icon name="X" size={16} />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-hidden relative">
+                        {(editingAsset.type === 'MATERIAL' || editingAsset.type === 'SCRIPT' || editingAsset.type === 'RIG') && (
+                            <NodeGraph assetId={editingAsset.id} />
+                        )}
+                        {(editingAsset.type === 'MESH' || editingAsset.type === 'SKELETAL_MESH') && (
+                            <StaticMeshEditor assetId={editingAsset.id} />
+                        )}
+                    </div>
+                </div>
             )}
         </div>
     );
