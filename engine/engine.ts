@@ -83,7 +83,7 @@ export class Engine {
     // Skeleton Mapping: EntityID (Mesh) -> Array of Bone Entity IDs
     skeletonMap: Map<string, string[]> = new Map();
     // Skeleton Entity Mapping: EntityID (Root Bone Entity) -> Skeleton Asset ID (for rig-only skeletons)
-    skeletonEntityAssetMap: Map<string, string> = new Map();
+    public skeletonEntityAssetMap: Map<string, string> = new Map();
 
     // Editor specifics
     isInputDown: boolean = false;
