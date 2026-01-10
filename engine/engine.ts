@@ -8,20 +8,20 @@ import { AnimationSystem } from './systems/AnimationSystem';
 import { SelectionSystem } from './systems/SelectionSystem';
 import { WebGLRenderer, PostProcessConfig } from './renderers/WebGLRenderer';
 import { DebugRenderer } from './renderers/DebugRenderer';
-import { TimelineState, ComponentType, MeshComponentMode, SimulationMode, PerformanceMetrics, Vector3, SoftSelectionFalloff, UIConfiguration, GridConfiguration, SnapSettings, StaticMeshAsset, SkeletalMeshAsset, SkeletonAsset } from '@/types';
+import { TimelineState, ComponentType, MeshComponentMode, SimulationMode, PerformanceMetrics, Vector3, SoftSelectionFalloff, UIConfiguration, GridConfiguration, SnapSettings, StaticMeshAsset, SkeletalMeshAsset, SkeletonAsset, SceneAsset } from '@/types';
 import { assetManager } from './AssetManager';
 import { consoleService } from './Console';
 import { gizmoSystem } from './GizmoSystem';
 import { controlRigSystem } from './systems/ControlRigSystem';
 import { registerCoreModules } from './modules/CoreModules';
-import { moduleManager } from './ModuleManager'; // Added missing import
+import { moduleManager } from './ModuleManager'; 
 import { Mat4Utils, Vec3Utils, MathUtils } from './math';
 import { skeletonTool } from './tools/SkeletonTool';
 import { DEFAULT_UI_CONFIG, DEFAULT_GRID_CONFIG, DEFAULT_SNAP_CONFIG } from '@/editor/state/EditorContext';
 import { eventBus } from './EventBus';
 import { MESH_TYPES, COMPONENT_MASKS } from './constants';
 import { MeshTopologyUtils } from './MeshTopologyUtils';
-import { compileShader } from './ShaderCompiler'; // Ensure import, not require
+import { compileShader } from './ShaderCompiler'; 
 
 export type SoftSelectionMode = 'FIXED' | 'DYNAMIC';
 
@@ -43,6 +43,9 @@ export class Engine {
     renderMode: number = 0;
     meshComponentMode: MeshComponentMode = 'OBJECT';
     
+    // Scene Management
+    currentSceneAssetId: string | null = null;
+
     // Soft Selection
     softSelectionEnabled: boolean = false;
     softSelectionRadius: number = 2.0;
@@ -584,8 +587,37 @@ export class Engine {
     }
 
     loadScene(json: string) {
+        // Clear existing Selection to prevent index errors
+        this.setSelected([]);
+        this.sceneGraph.clear(); // Ensure clean state before loading
         this.ecs.deserialize(json, this.sceneGraph);
         this.notifyUI();
+    }
+
+    loadSceneFromAsset(assetId: string) {
+        const asset = assetManager.getAsset(assetId);
+        if (asset && asset.type === 'SCENE') {
+            this.loadScene((asset as SceneAsset).data.json);
+            this.currentSceneAssetId = assetId;
+            consoleService.success(`Loaded Scene: ${asset.name}`);
+        }
+    }
+
+    saveCurrentScene() {
+        const json = this.saveScene();
+        if (this.currentSceneAssetId) {
+            const asset = assetManager.getAsset(this.currentSceneAssetId) as SceneAsset;
+            if (asset) {
+                asset.data.json = json;
+                eventBus.emit('ASSET_UPDATED', { id: asset.id, type: 'SCENE' });
+                consoleService.success(`Saved Scene: ${asset.name}`);
+            }
+        } else {
+            // Create new scene asset
+            const asset = assetManager.createScene("Untitled Scene", json);
+            this.currentSceneAssetId = asset.id;
+            consoleService.success(`Created & Saved: ${asset.name}`);
+        }
     }
 
     getPostProcessConfig() {
@@ -614,6 +646,16 @@ export class Engine {
     }
 
     createDefaultScene() {
+        // Check if "Default Scene" exists in assets
+        const scenes = assetManager.getAssetsByType('SCENE');
+        const defaultScene = scenes.find(s => s.name === 'Default Scene');
+        
+        if (defaultScene) {
+            this.loadSceneFromAsset(defaultScene.id);
+            return;
+        }
+
+        // --- Create Default Content Programmatically ---
         const mat = assetManager.getAssetsByType('MATERIAL').find(m => m.name === 'Standard');
         
         const cubeId = this.createEntityFromAsset('SM_Cube', { x: -1.5, y: 0, z: 0 });
@@ -657,7 +699,12 @@ export class Engine {
         this.ecs.store.setPosition(vpIdx, 0, 2, 0);
         this.sceneGraph.registerEntity(vpId);
 
-        consoleService.success("Default Scene Created");
+        // --- Save as "Default Scene" Asset ---
+        const json = this.saveScene();
+        const asset = assetManager.createScene("Default Scene", json);
+        this.currentSceneAssetId = asset.id;
+
+        consoleService.success("Default Scene Created & Saved");
     }
 
     resize(width: number, height: number) {

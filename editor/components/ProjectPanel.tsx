@@ -164,7 +164,7 @@ export const ProjectPanel: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('GRID');
     const [scale, setScale] = useState(64);
-    const [favorites, setFavorites] = useState<string[]>(['/Content', '/Content/Materials']);
+    const [favorites, setFavorites] = useState<string[]>(['/Content', '/Content/Materials', '/Content/Scenes']);
     const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, assetId?: string, path?: string, type: 'ASSET'|'FOLDER'|'BG', visible: boolean } | null>(null);
@@ -274,6 +274,9 @@ export const ProjectPanel: React.FC = () => {
             case 'SKELETON':
                 created = assetManager.createSkeleton(name, currentPath);
                 break;
+            case 'SCENE':
+                created = assetManager.createScene("Untitled Scene", "{}", currentPath);
+                break;
         }
         setRefresh(r => r + 1);
         if (created) {
@@ -286,8 +289,11 @@ export const ProjectPanel: React.FC = () => {
         if (asset.type === 'FOLDER') {
             setCurrentPath(`${asset.path === '/' ? '' : asset.path}/${asset.name}`);
         } else {
+            if (asset.type === 'SCENE') {
+                engineInstance.loadSceneFromAsset(asset.id);
+            }
             // Open Graph Editors
-            if (asset.type === 'MATERIAL' || asset.type === 'SCRIPT' || asset.type === 'RIG') {
+            else if (asset.type === 'MATERIAL' || asset.type === 'SCRIPT' || asset.type === 'RIG') {
                 const winId = `graph_${asset.id}`;
                 wm?.registerWindow({
                     id: winId, title: asset.name, icon: 'Workflow',
@@ -320,6 +326,7 @@ export const ProjectPanel: React.FC = () => {
             case 'SCRIPT': return 'bg-blue-500';
             case 'RIG': return 'bg-orange-500';
             case 'PHYSICS_MATERIAL': return 'bg-lime-500';
+            case 'SCENE': return 'bg-orange-600';
             default: return 'bg-gray-500';
         }
     };
@@ -335,6 +342,7 @@ export const ProjectPanel: React.FC = () => {
             case 'SCRIPT': return 'FileCode';
             case 'RIG': return 'GitBranch';
             case 'PHYSICS_MATERIAL': return 'Activity';
+            case 'SCENE': return 'Clapperboard';
             default: return 'File';
         }
     };
@@ -460,7 +468,7 @@ export const ProjectPanel: React.FC = () => {
                 {/* Filters */}
                 <div className="h-8 bg-panel border-b border-black/10 flex items-center gap-1 px-2 overflow-x-auto custom-scrollbar shrink-0">
                     <button onClick={() => setFilterType('ALL')} className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors border ${filterType === 'ALL' ? 'bg-white/10 border-white/20 text-white' : 'border-transparent text-text-secondary hover:bg-white/5'}`}>All</button>
-                    {['MATERIAL', 'MESH', 'SKELETAL_MESH', 'TEXTURE', 'SCRIPT', 'RIG', 'PHYSICS_MATERIAL'].map(t => (
+                    {['SCENE', 'MATERIAL', 'MESH', 'SKELETAL_MESH', 'TEXTURE', 'SCRIPT', 'RIG', 'PHYSICS_MATERIAL'].map(t => (
                         <button key={t} onClick={() => setFilterType(t as AssetType)} className={`px-2 py-0.5 text-[10px] rounded-sm transition-colors border flex items-center gap-1 ${filterType === t ? 'bg-white/10 border-white/20 text-white' : 'border-transparent text-text-secondary hover:bg-white/5'}`}>
                             <div className={`w-1.5 h-1.5 rounded-full ${getTypeColor(t as AssetType).replace('bg-', 'bg-')}`}></div>
                             {t.replace('_', ' ')}
@@ -560,6 +568,7 @@ export const ProjectPanel: React.FC = () => {
                                 <Icon name="FolderPlus" size={14} /> New Folder
                             </div>
                             <div className="border-t border-white/10 my-1"></div>
+                            <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('SCENE'); setContextMenu(null); }}>Scene</div>
                             <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('MATERIAL'); setContextMenu(null); }}>Material</div>
                             <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('SCRIPT'); setContextMenu(null); }}>Script</div>
                             <div className="px-3 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={() => { handleCreateAsset('RIG'); setContextMenu(null); }}>Rig</div>

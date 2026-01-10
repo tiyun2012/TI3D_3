@@ -61,6 +61,12 @@ export class SceneGraph {
     this.rootIds.delete(entityId);
   }
 
+  clear() {
+      this.nodes.clear();
+      this.rootIds.clear();
+      this.updateStack = [];
+  }
+
   setContext(ecs: SoAEntitySystem) { 
       this.ecs = ecs; 
       this.nodes.forEach(node => {

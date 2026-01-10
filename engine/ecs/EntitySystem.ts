@@ -1,3 +1,4 @@
+
 import { ComponentStorage } from './ComponentStorage';
 import { MESH_NAMES, MESH_TYPES, ROTATION_ORDER_MAP, ROTATION_ORDER_ZY_MAP, LIGHT_TYPE_MAP, LIGHT_TYPE_NAMES, COMPONENT_MASKS } from '../constants';
 import { SceneGraph } from '../SceneGraph';
@@ -379,15 +380,32 @@ export class SoAEntitySystem {
     deserialize(json: string, sceneGraph: SceneGraph) {
         try {
             const data = JSON.parse(json);
+            
+            // Handle invalid or empty data (e.g. from createScene default "{}")
+            if (!data || typeof data !== 'object' || data.count === undefined) {
+                this.count = 0;
+                this.freeIndices = [];
+                this.idToIndex.clear();
+                this.proxyCache.fill(null);
+                // Important: Reset active flags so we don't render stale data
+                this.store.isActive.fill(0);
+                return;
+            }
+
             if (data.capacity && data.capacity > this.store.capacity) {
                 this.resize(data.capacity);
             }
             this.count = data.count;
-            this.freeIndices = data.freeIndices;
-            this.idToIndex = new Map(data.idMap);
+            this.freeIndices = data.freeIndices || [];
+            this.idToIndex = new Map(data.idMap || []);
             this.proxyCache.fill(null);
             
-            this.store.restore(data.store);
+            if (data.store) {
+                this.store.restore(data.store);
+            } else {
+                // If no store data provided, ensure things are inactive
+                this.store.isActive.fill(0);
+            }
 
             this.idToIndex.forEach((idx, id) => {
                 if (this.store.isActive[idx]) sceneGraph.registerEntity(id);

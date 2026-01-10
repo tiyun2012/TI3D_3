@@ -257,51 +257,61 @@ export class ComponentStorage {
     }
     
     restore(snap: any) {
-        if (snap.posX.length > this.capacity) this.resize(snap.posX.length);
+        if (!snap) return;
+        
+        if (snap.posX && snap.posX.length > this.capacity) this.resize(snap.posX.length);
         
         if (snap.componentMask) this.componentMask.set(snap.componentMask);
 
-        this.posX.set(snap.posX); this.posY.set(snap.posY); this.posZ.set(snap.posZ);
-        this.rotX.set(snap.rotX); this.rotY.set(snap.rotY); this.rotZ.set(snap.rotZ);
-        this.scaleX.set(snap.scaleX); this.scaleY.set(snap.scaleY); this.scaleZ.set(snap.scaleZ);
+        if (snap.posX) this.posX.set(snap.posX);
+        if (snap.posY) this.posY.set(snap.posY);
+        if (snap.posZ) this.posZ.set(snap.posZ);
+        if (snap.rotX) this.rotX.set(snap.rotX);
+        if (snap.rotY) this.rotY.set(snap.rotY);
+        if (snap.rotZ) this.rotZ.set(snap.rotZ);
+        if (snap.scaleX) this.scaleX.set(snap.scaleX);
+        if (snap.scaleY) this.scaleY.set(snap.scaleY);
+        if (snap.scaleZ) this.scaleZ.set(snap.scaleZ);
         if (snap.rotationOrder) this.rotationOrder.set(snap.rotationOrder);
 
-        this.meshType.set(snap.meshType);
-        this.textureIndex.set(snap.textureIndex);
-        if(snap.materialIndex) this.materialIndex.set(snap.materialIndex);
-        if(snap.rigIndex) this.rigIndex.set(snap.rigIndex);
-        if(snap.effectIndex) this.effectIndex.set(snap.effectIndex);
-        if(snap.animationIndex) this.animationIndex.set(snap.animationIndex);
+        if (snap.meshType) this.meshType.set(snap.meshType);
+        if (snap.textureIndex) this.textureIndex.set(snap.textureIndex);
+        if (snap.materialIndex) this.materialIndex.set(snap.materialIndex);
+        if (snap.rigIndex) this.rigIndex.set(snap.rigIndex);
+        if (snap.effectIndex) this.effectIndex.set(snap.effectIndex);
+        if (snap.animationIndex) this.animationIndex.set(snap.animationIndex);
         
-        this.colorR.set(snap.colorR); this.colorG.set(snap.colorG); this.colorB.set(snap.colorB);
+        if (snap.colorR) this.colorR.set(snap.colorR);
+        if (snap.colorG) this.colorG.set(snap.colorG);
+        if (snap.colorB) this.colorB.set(snap.colorB);
         if (snap.lightType) this.lightType.set(snap.lightType);
         if (snap.lightIntensity) this.lightIntensity.set(snap.lightIntensity);
 
-        this.mass.set(snap.mass);
-        this.useGravity.set(snap.useGravity);
-        if(snap.physicsMaterialIndex) this.physicsMaterialIndex.set(snap.physicsMaterialIndex);
+        if (snap.mass) this.mass.set(snap.mass);
+        if (snap.useGravity) this.useGravity.set(snap.useGravity);
+        if (snap.physicsMaterialIndex) this.physicsMaterialIndex.set(snap.physicsMaterialIndex);
         
-        if(snap.vpLength) this.vpLength.set(snap.vpLength); 
+        if (snap.vpLength) this.vpLength.set(snap.vpLength); 
         
         if(snap.psMaxCount) {
             this.psMaxCount.set(snap.psMaxCount);
-            this.psRate.set(snap.psRate);
-            this.psSpeed.set(snap.psSpeed);
-            this.psLife.set(snap.psLife);
-            this.psColorR.set(snap.psColorR);
-            this.psColorG.set(snap.psColorG);
-            this.psColorB.set(snap.psColorB);
-            this.psSize.set(snap.psSize);
-            this.psTextureId.set(snap.psTextureId);
+            if (snap.psRate) this.psRate.set(snap.psRate);
+            if (snap.psSpeed) this.psSpeed.set(snap.psSpeed);
+            if (snap.psLife) this.psLife.set(snap.psLife);
+            if (snap.psColorR) this.psColorR.set(snap.psColorR);
+            if (snap.psColorG) this.psColorG.set(snap.psColorG);
+            if (snap.psColorB) this.psColorB.set(snap.psColorB);
+            if (snap.psSize) this.psSize.set(snap.psSize);
+            if (snap.psTextureId) this.psTextureId.set(snap.psTextureId);
             if(snap.psMaterialIndex) this.psMaterialIndex.set(snap.psMaterialIndex);
-            this.psShape.set(snap.psShape);
+            if (snap.psShape) this.psShape.set(snap.psShape);
         }
 
-        this.isActive.set(snap.isActive);
-        this.generation.set(snap.generation);
+        if (snap.isActive) this.isActive.set(snap.isActive);
+        if (snap.generation) this.generation.set(snap.generation);
         
-        this.names = [...snap.names];
-        this.ids = [...snap.ids];
+        if (snap.names) this.names = [...snap.names];
+        if (snap.ids) this.ids = [...snap.ids];
         
         this.transformDirty.fill(1);
     }

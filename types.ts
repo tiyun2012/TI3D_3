@@ -40,6 +40,7 @@ export interface IEngine {
     startVertexDrag(entityId: string): void;
     updateVertexDrag(entityId: string, delta: Vector3): void;
     endVertexDrag(): void;
+    loadSceneFromAsset(assetId: string): void; // Added for ProjectPanel interaction
 }
 
 // --- CONFIGURATION TYPES ---
@@ -246,7 +247,7 @@ export interface BoneData {
 }
 
 // Asset Types
-export type AssetType = 'FOLDER' | 'MESH' | 'SKELETAL_MESH' | 'SKELETON' | 'MATERIAL' | 'PHYSICS_MATERIAL' | 'TEXTURE' | 'SCRIPT' | 'RIG';
+export type AssetType = 'FOLDER' | 'MESH' | 'SKELETAL_MESH' | 'SKELETON' | 'MATERIAL' | 'PHYSICS_MATERIAL' | 'TEXTURE' | 'SCRIPT' | 'RIG' | 'SCENE';
 
 export interface BaseAsset {
     id: string;
@@ -349,4 +350,11 @@ export interface TextureAsset extends BaseAsset {
     layerIndex: number; 
 }
 
-export type Asset = FolderAsset | StaticMeshAsset | SkeletalMeshAsset | SkeletonAsset | MaterialAsset | PhysicsMaterialAsset | ScriptAsset | RigAsset | TextureAsset;
+export interface SceneAsset extends BaseAsset {
+    type: 'SCENE';
+    data: {
+        json: string; // Serialized ECS state
+    };
+}
+
+export type Asset = FolderAsset | StaticMeshAsset | SkeletalMeshAsset | SkeletonAsset | MaterialAsset | PhysicsMaterialAsset | ScriptAsset | RigAsset | TextureAsset | SceneAsset;

@@ -1,5 +1,5 @@
 
-import { StaticMeshAsset, SkeletalMeshAsset, SkeletonAsset, MaterialAsset, PhysicsMaterialAsset, ScriptAsset, RigAsset, TextureAsset, GraphNode, GraphConnection, Asset, LogicalMesh, FolderAsset, BoneData } from '@/types';
+import { StaticMeshAsset, SkeletalMeshAsset, SkeletonAsset, MaterialAsset, PhysicsMaterialAsset, ScriptAsset, RigAsset, TextureAsset, SceneAsset, GraphNode, GraphConnection, Asset, LogicalMesh, FolderAsset, BoneData } from '@/types';
 import { MaterialTemplate, MATERIAL_TEMPLATES } from './MaterialTemplates';
 import { MESH_TYPES } from './constants';
 import { ProceduralGeneration } from './ProceduralGeneration';
@@ -358,20 +358,31 @@ class AssetManagerService {
         };
 
         const newAsset: SkeletonAsset = {
-    id,
-    name,
-    type: 'SKELETON',
-    path,
-    isProtected: false,
-    skeleton: {
-        bones: [rootBone]
-    },
-    animations: []
-};
+            id,
+            name,
+            type: 'SKELETON',
+            path,
+            isProtected: false,
+            skeleton: {
+                bones: [rootBone]
+            },
+            animations: []
+        };
 
         this.registerAsset(newAsset);
         eventBus.emit('ASSET_CREATED', { id: newAsset.id, type: 'SKELETON' });
         return newAsset;
+    }
+
+    createScene(name: string, json: string = '{}', path: string = '/Content/Scenes'): SceneAsset {
+        const id = crypto.randomUUID();
+        const asset: SceneAsset = {
+            id, name, type: 'SCENE', path,
+            data: { json }
+        };
+        this.registerAsset(asset);
+        eventBus.emit('ASSET_CREATED', { id: asset.id, type: 'SCENE' });
+        return asset;
     }
 
     async importFile(fileName: string, content: string | ArrayBuffer, type: 'MESH' | 'SKELETAL_MESH', importScale: number = 1.0, detectQuads: boolean = true): Promise<Asset> {
@@ -535,7 +546,7 @@ eventBus.emit('ASSET_CREATED', { id: skeletonAsset.id, type: 'SKELETON' });
                  animations: animations
              };
              this.registerAsset(skelAsset);
-             eventBus.emit('ASSET_CREATED', { id: skelAsset.id, type: 'SKELETAL_MESH' });
+             eventBus.emit('ASSET_CREATED', { id: skelAsset.id, type: 'SKELETON' });
              return skelAsset;
         }
 
@@ -1082,6 +1093,7 @@ private reconstructQuads(
         this.registerAsset({ id: 'folder_rig', name: 'Rigs', type: 'FOLDER', path: '/Content' });
         this.registerAsset({ id: 'folder_phys', name: 'Physics', type: 'FOLDER', path: '/Content' });
         this.registerAsset({ id: 'folder_scr', name: 'Scripts', type: 'FOLDER', path: '/Content' });
+        this.registerAsset({ id: 'folder_scenes', name: 'Scenes', type: 'FOLDER', path: '/Content' });
     }
 }
 export const assetManager = new AssetManagerService();

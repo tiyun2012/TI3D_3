@@ -61,6 +61,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onSave, onLoad }) => {
       setActiveMenu(activeMenu === menu ? null : menu);
   };
 
+  const handleSaveScene = () => {
+      engineInstance.saveCurrentScene();
+  };
+
   return (
     <div className="h-10 bg-panel-header border-b border-white/5 flex items-center px-4 select-none shrink-0 shadow-md z-50 justify-between gap-4">
       
@@ -79,8 +83,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onSave, onLoad }) => {
                 <div className={menuBtnClass('File')} onClick={(e) => toggleMenu(e, 'File')}>File</div>
                 {activeMenu === 'File' && (
                     <div className="absolute top-8 left-0 bg-[#252525] border border-white/10 shadow-2xl rounded-md py-1 min-w-[160px] text-text-primary z-[100] animate-in fade-in zoom-in-95 duration-75">
-                        <div className="px-4 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex justify-between" onClick={onSave}><span>Save Scene</span><span className="text-white/30 text-[9px]">Ctrl+S</span></div>
-                        <div className="px-4 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={onLoad}>Load Scene</div>
+                        <div className="px-4 py-1.5 hover:bg-accent hover:text-white cursor-pointer flex justify-between" onClick={handleSaveScene}><span>Save Scene</span><span className="text-white/30 text-[9px]">Ctrl+S</span></div>
+                        <div className="px-4 py-1.5 hover:bg-accent hover:text-white cursor-pointer" onClick={onLoad}>Load Scene...</div>
                     </div>
                 )}
             </div>
