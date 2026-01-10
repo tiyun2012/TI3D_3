@@ -22,6 +22,7 @@ import { UVEditor } from '@/editor/components/UVEditor';
 import { Timeline } from '@/editor/components/Timeline';
 import { SkinningEditor } from '@/editor/components/SkinningEditor';
 import { ToolOptionsPanel } from '@/editor/components/ToolOptionsPanel'; 
+import { WorkspaceShell } from '@/editor/components/WorkspaceShell';
 
 // --- Widget Wrappers ---
 
@@ -312,11 +313,13 @@ const EditorInterface: React.FC = () => {
             {/* Unified Top Toolbar (Menus + Tools + Transport) */}
             <Toolbar onSave={handleSave} onLoad={handleLoad} />
 
-            <div className="absolute inset-0 top-[40px] bottom-[24px] z-0">
-                <SceneWrapper />
+            <div className="flex-1 min-h-0 relative z-0">
+                <WorkspaceShell>
+                    <SceneWrapper />
+                </WorkspaceShell>
             </div>
 
-            <div className="absolute bottom-0 w-full h-6 bg-panel-header/90 backdrop-blur flex items-center px-4 justify-between text-[10px] text-text-secondary shrink-0 select-none z-50 border-t border-white/5">
+            <div className="w-full h-6 bg-panel-header/90 backdrop-blur flex items-center px-4 justify-between text-[10px] text-text-secondary shrink-0 select-none z-50 border-t border-white/5">
                 <StatusBarInfo />
                 <div className="flex items-center gap-4 font-mono opacity-60">
                     <span>{engineInstance.metrics.entityCount} Objects</span>

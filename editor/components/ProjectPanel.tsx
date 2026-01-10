@@ -9,6 +9,7 @@ import { MATERIAL_TEMPLATES } from '@/engine/MaterialTemplates';
 import { engineInstance } from '@/engine/engine';
 import { NodeGraph } from './NodeGraph'; 
 import { ImportWizard } from './ImportWizard';
+import { StaticMeshEditor } from './StaticMeshEditor';
 import { consoleService } from '@/engine/Console';
 import { Asset, AssetType } from '@/types';
 type ViewMode = 'GRID' | 'LIST';
@@ -285,7 +286,7 @@ export const ProjectPanel: React.FC = () => {
         if (asset.type === 'FOLDER') {
             setCurrentPath(`${asset.path === '/' ? '' : asset.path}/${asset.name}`);
         } else {
-            // Open Editor
+            // Open Graph Editors
             if (asset.type === 'MATERIAL' || asset.type === 'SCRIPT' || asset.type === 'RIG') {
                 const winId = `graph_${asset.id}`;
                 wm?.registerWindow({
@@ -294,6 +295,16 @@ export const ProjectPanel: React.FC = () => {
                     initialPosition: { x: 150 + Math.random()*50, y: 100 + Math.random()*50 }
                 });
                 wm?.openWindow(winId);
+            } 
+            // Open Static Mesh Viewer
+            else if (asset.type === 'MESH' || asset.type === 'SKELETAL_MESH') {
+                 const winId = `mesh_${asset.id}`;
+                 wm?.registerWindow({
+                    id: winId, title: asset.name, icon: 'Box',
+                    content: <StaticMeshEditor assetId={asset.id} />, width: 600, height: 500,
+                    initialPosition: { x: 200, y: 100 }
+                 });
+                 wm?.openWindow(winId);
             }
         }
     };

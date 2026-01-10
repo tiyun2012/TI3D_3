@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useLayoutEffect, useContext, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Entity, ToolType, MeshComponentMode } from '@/types';
@@ -153,44 +154,50 @@ export const SceneView: React.FC<SceneViewProps> = ({ entities, sceneGraph, onSe
         const obs = new ResizeObserver(handleResize);
         if (containerRef.current) obs.observe(containerRef.current);
         
-        return () => obs.disconnect();
+        // Start Engine Render Loop
+        engineInstance.startSystem();
+
+        return () => {
+            obs.disconnect();
+            // Optional: Stop engine loop if scene view unmounts, but usually we keep it running or pause
+            engineInstance.stopSystem();
+        };
     }, []);
 
+    // Sync Camera Data to Engine on Change
     useEffect(() => {
-        let lastTime = performance.now();
-        let frameId: number;
+        const eyeX = camera.target.x + camera.radius * Math.sin(camera.phi) * Math.cos(camera.theta);
+        const eyeY = camera.target.y + camera.radius * Math.cos(camera.phi);
+        const eyeZ = camera.target.z + camera.radius * Math.sin(camera.phi) * Math.sin(camera.theta);
         
-        const loop = (time: number) => {
-            const dt = (time - lastTime) / 1000;
-            lastTime = time;
-            
-            const eyeX = camera.target.x + camera.radius * Math.sin(camera.phi) * Math.cos(camera.theta);
-            const eyeY = camera.target.y + camera.radius * Math.cos(camera.phi);
-            const eyeZ = camera.target.z + camera.radius * Math.sin(camera.phi) * Math.sin(camera.theta);
-            
-            const width = containerRef.current?.clientWidth || 1;
-            const height = containerRef.current?.clientHeight || 1;
-            
-            const aspect = width / height;
-            const proj = Mat4Utils.create();
-            Mat4Utils.perspective(45 * Math.PI / 180, aspect, 0.1, 1000.0, proj);
-            const view = Mat4Utils.create();
-            Mat4Utils.lookAt({x:eyeX, y:eyeY, z:eyeZ}, camera.target, {x:0,y:1,z:0}, view);
-            const vp = Mat4Utils.create();
-            Mat4Utils.multiply(proj, view, vp);
-            engineInstance.updateCamera(vp, {x:eyeX, y:eyeY, z:eyeZ}, width, height);
-            gizmoSystem.setTool(tool);
+        const width = containerRef.current?.clientWidth || 1;
+        const height = containerRef.current?.clientHeight || 1;
+        
+        const aspect = width / height;
+        const proj = Mat4Utils.create();
+        Mat4Utils.perspective(45 * Math.PI / 180, aspect, 0.1, 1000.0, proj);
+        const view = Mat4Utils.create();
+        Mat4Utils.lookAt({x:eyeX, y:eyeY, z:eyeZ}, camera.target, {x:0,y:1,z:0}, view);
+        const vp = Mat4Utils.create();
+        Mat4Utils.multiply(proj, view, vp);
+        
+        engineInstance.updateCamera(vp, {x:eyeX, y:eyeY, z:eyeZ}, width, height);
+        gizmoSystem.setTool(tool);
+    }, [camera, tool]);
 
+    // Debug Draw for Soft Selection Brush
+    useEffect(() => {
+        const updateBrushDraw = () => {
             if (engineInstance.meshComponentMode !== 'OBJECT' && engineInstance.selectionSystem.selectedIndices.size > 0 && softSelectionEnabled) {
                 const idx = Array.from(engineInstance.selectionSystem.selectedIndices)[0];
                 const entityId = engineInstance.ecs.store.ids[idx];
                 if (entityId) {
                     const worldPos = engineInstance.sceneGraph.getWorldPosition(entityId); 
-                    const scale = Math.max(engineInstance.ecs.store.scaleX[idx], engineInstance.ecs.store.scaleY[idx]);
                     const rad = softSelectionRadius;
                     
                     const segments = 32;
                     const prev = { x: worldPos.x + rad, y: worldPos.y, z: worldPos.z };
+                    engineInstance.debugRenderer.begin(); // Reset previous debug lines for this frame (handled by Engine tick usually, but safe here)
                     for(let i=1; i<=segments; i++) {
                         const th = (i/segments) * Math.PI * 2;
                         const cur = { 
@@ -203,13 +210,13 @@ export const SceneView: React.FC<SceneViewProps> = ({ entities, sceneGraph, onSe
                     }
                 }
             }
-
-            engineInstance.tick(dt);
-            frameId = requestAnimationFrame(loop);
         };
-        frameId = requestAnimationFrame(loop);
-        return () => cancelAnimationFrame(frameId);
-    }, [camera, tool, softSelectionEnabled, softSelectionRadius]); 
+        // We can hook into the engine update loop via subscription if we want per-frame updates
+        // or just rely on react state changes. 
+        // For smooth brush resizing, the useBrushInteraction hook updates softSelectionRadius state, triggering this effect.
+        updateBrushDraw();
+    }, [softSelectionEnabled, softSelectionRadius, meshComponentMode, selectedIds]);
+
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

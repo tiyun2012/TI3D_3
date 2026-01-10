@@ -41,12 +41,11 @@ const HierarchyItem: React.FC<{
   const inputRef = useRef<HTMLInputElement>(null);
   const entity = entityMap.get(entityId);
   
-  if (!entity) return null;
-
+  // Safe default calculations ensuring hooks run unconditionally
   const childrenIds = sceneGraph.getChildren(entityId);
   const hasChildren = childrenIds.length > 0;
-  const isSelected = selectedIds.includes(entity.id);
-  const isRenaming = renamingId === entity.id;
+  const isSelected = entity ? selectedIds.includes(entity.id) : false;
+  const isRenaming = entity ? renamingId === entity.id : false;
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -54,6 +53,9 @@ const HierarchyItem: React.FC<{
         inputRef.current.select();
     }
   }, [isRenaming]);
+
+  // Hook-safe early return
+  if (!entity) return null;
 
   const handleClick = (e: React.MouseEvent) => {
       if (e.ctrlKey || e.metaKey) {

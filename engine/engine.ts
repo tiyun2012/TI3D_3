@@ -90,6 +90,10 @@ export class Engine {
     currentShaderSource: string = '';
     pendingTextureUploads: Array<{layerIndex: number, image: HTMLImageElement}> = [];
 
+    // Loop
+    private rafId: number = 0;
+    private lastTime: number = 0;
+
     constructor() {
         this.ecs = new SoAEntitySystem();
         this.sceneGraph = new SceneGraph();
@@ -135,6 +139,27 @@ export class Engine {
             }
         });
     }
+
+    startSystem() {
+        if (this.rafId) return;
+        this.lastTime = performance.now();
+        const loop = (time: number) => {
+            const dt = (time - this.lastTime) / 1000;
+            this.lastTime = time;
+            this.tick(dt);
+            this.rafId = requestAnimationFrame(loop);
+        };
+        this.rafId = requestAnimationFrame(loop);
+    }
+
+    stopSystem() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = 0;
+        }
+    }
+
+    // ... (rest of the file remains unchanged until tick)
 
     get meshSystem() { return this.renderer.meshSystem; }
     get hoveredVertex() { return this.selectionSystem.hoveredVertex; }
